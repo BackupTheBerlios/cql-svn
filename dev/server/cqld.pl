@@ -27,7 +27,12 @@ use IO::Socket;
 use strict;
 use Symbol;
 use POSIX;
+
+use SQL::Statement;
+
 use Data::Dumper;
+
+use CQL::Parser;
 
 =head1 NAME
 
@@ -64,6 +69,11 @@ my $server = IO::Socket::INET->new(
 		Reuse		=> 1,
 		Listen		=> 10
 	) or &error($!,1);
+
+#
+# sql parser object
+#
+my($parser) = SQL::Parser->new('Ansi');
 
 =head2 REAPER()
 
@@ -133,9 +143,36 @@ sub work_with_data {
 	}
 	
 	my $answer = interpret($data);
+	if($answer eq "-1") {
+		
+	}
 
 	$rv = $client->send("$answer\n", 0);
 	return 1;
+}
+
+=head2 is_authenticated()
+
+checks if a user is authenticated to do something
+
+@return bool
+
+=cut
+sub is_authenticated
+{
+	return 1;
+}
+
+=head2 use_schema(string)
+
+select a schema to use for the query
+
+@param string schema
+
+=cut
+sub use_schema($)
+{
+	my $schema = shift;
 }
 
 =head2 interpret()
@@ -147,13 +184,24 @@ this function interprets the client data
 =cut
 sub interpret($)
 {
+	return -1 unless(is_authenticated());
 	# uebergabe holen
 	my $param = shift;
 	# die befehle aufsplitten
 	# hier muss drauf geachtet werden, dass nur - .'te verwendet werden die nicht in '...' stehen
-	my @commands = split(/;(?=[^']*(?:'[^']*'[^']*)*$)/, $param);
+	my @commands = split(/;\s?(?=[^']*(?:'[^']*'[^']*)*$)/, $param);
+	my $statement;
 	
-	return Dumper(@commands);
+	foreach(@commands) {
+		if(m/^USE (.*)$/) {
+			use_schema($1);
+			next;
+		}
+		
+		$statement = eval { SQL::Statement->new("$_", $parser); };
+		my $cql = CQL::Parser->new($statement);
+		return "invalid cql syntax!" if($@);
+	}
 }
 
 sub error {
